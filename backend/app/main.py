@@ -39,8 +39,11 @@ async def chat_endpoint(request: ChatRequest, http_request: Request):
         raise HTTPException(status_code=400, detail="Messages payload cannot be empty")
         
     try:
-        # Call the AI Engine service
-        ai_response_text = await process_chat(request.messages)
+        # Call the AI Engine service, passing the OAuth access token if available
+        ai_response_text = await process_chat(
+            messages=request.messages,
+            access_token=auth_header
+        )
         
         return ChatResponse(
             role="assistant",

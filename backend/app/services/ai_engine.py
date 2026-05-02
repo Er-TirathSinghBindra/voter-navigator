@@ -1,4 +1,5 @@
 import vertexai
+import json
 from vertexai.generative_models import (
     GenerativeModel,
     Tool,
@@ -8,20 +9,28 @@ from vertexai.generative_models import (
     ChatSession
 )
 
-# Initialize Vertex AI - (Requires GOOGLE_APPLICATION_CREDENTIALS or Cloud Run metadata)
-# vertexai.init(project="your-project-id", location="us-central1")
+from .civic_api import fetch_civic_info
+from .wallet_api import generate_voter_pass
+from .calendar_api import add_calendar_event
+from .translation_api import translate_civic_term
+
+# Initialize Vertex AI - (Requires GOOGLE_APPLICATION_CREDENTIALS)
+# try:
+#     vertexai.init(project="your-project-id", location="us-central1")
+# except Exception as e:
+#     print("Warning: Vertex AI not initialized correctly.", e)
 
 # Define tools (Function Calling)
 get_civic_info_func = FunctionDeclaration(
     name="get_civic_info",
-    description="Get polling locations, ballot information, or representative data based on the user's address.",
+    description="Get polling locations, ballot information, or representative data based on the user's address. Use this whenever the user asks where to vote or who their representative is.",
     parameters={
         "type": "object",
         "properties": {
-            "query_type": {"type": "string", "description": "Type of info needed, e.g., 'polling_location', 'ballot', 'representatives'"},
-            "address_context": {"type": "string", "description": "The user's current or provided address."}
+            "query_type": {"type": "string", "description": "Type of info needed, exactly one of: 'polling_location', 'ballot', 'representatives'"},
+            "address_context": {"type": "string", "description": "The user's current or provided address. MUST include street and ZIP code if possible."}
         },
-        "required": ["query_type"]
+        "required": ["query_type", "address_context"]
     }
 )
 
@@ -32,7 +41,7 @@ add_calendar_deadline_func = FunctionDeclaration(
         "type": "object",
         "properties": {
             "event_title": {"type": "string", "description": "Title of the calendar event (e.g., 'Election Day', 'Voter Registration Deadline')"},
-            "date": {"type": "string", "description": "ISO format date string of the deadline."}
+            "date": {"type": "string", "description": "ISO format date string of the deadline (YYYY-MM-DD)."}
         },
         "required": ["event_title", "date"]
     }
@@ -46,7 +55,7 @@ generate_wallet_pass_func = FunctionDeclaration(
         "properties": {
             "voter_state": {"type": "string", "description": "The state the voter is registered in."}
         },
-        "required": []
+        "required": ["voter_state"]
     }
 )
 
@@ -82,19 +91,20 @@ Rules:
 1. Remain strictly non-partisan and neutral. Do not endorse any candidate or party.
 2. Use the provided tools when the user's intent matches them.
 3. Be concise and friendly.
+4. If an API tool returns an error (like missing address), politely ask the user for the missing information.
+5. Do NOT make up polling locations or dates. Only use data returned by the tools.
 """
 
 def get_model():
-    # Use gemini-1.5-flash for fast reasoning and function calling
     return GenerativeModel(
-        "gemini-1.5-flash-001",
+        "gemini-3.1-flash-lite-preview",
         system_instruction=[SYSTEM_INSTRUCTION],
         tools=[civic_tools]
     )
 
-async def process_chat(messages: list) -> str:
+async def process_chat(messages: list, access_token: str = None) -> str:
     """
-    Processes the chat history, invokes Gemini, and handles any tool calls.
+    Processes the chat history, invokes Gemini, and handles real API tool calls.
     """
     model = get_model()
     
@@ -105,41 +115,49 @@ async def process_chat(messages: list) -> str:
         
     last_message = messages[-1].content
     
-    # Start chat session
     chat = model.start_chat(history=history)
-    
-    # Send message to model
     response = chat.send_message(last_message)
     
-    # Handle Tool Calls if any
+    # Handle Tool Calls
     if response.function_call:
         func = response.function_call
         tool_name = func.name
-        args = func.args
+        args = {key: value for key, value in func.args.items()}
         
         print(f"Model called tool: {tool_name} with args: {args}")
         
-        # MOCK IMPLEMENTATIONS
-        tool_response_data = ""
+        tool_response_data = {}
+        
         if tool_name == "get_civic_info":
-            tool_response_data = f"Mock: Found polling location at 123 Main St for address query."
+            tool_response_data = await fetch_civic_info(
+                query_type=args.get("query_type", "polling_location"),
+                address_context=args.get("address_context", "")
+            )
         elif tool_name == "add_calendar_deadline":
-            tool_response_data = f"Mock: Successfully added '{args.get('event_title', 'Event')}' to your Google Calendar."
+            tool_response_data = await add_calendar_event(
+                event_title=args.get("event_title", "Election Event"),
+                date_iso=args.get("date", ""),
+                access_token=access_token
+            )
         elif tool_name == "generate_wallet_pass":
-            tool_response_data = f"Mock: Generated Digital Voter Pass. Here is your mock link: https://pay.google.com/gp/v/save/mock-jwt-token"
+            tool_response_data = await generate_voter_pass(
+                voter_state=args.get("voter_state", "Unknown")
+            )
         elif tool_name == "translate_civic_term":
-            tool_response_data = f"Mock: The translation for '{args.get('term', '')}' in {args.get('target_language', '')} is 'Traducción simulada'."
+            tool_response_data = await translate_civic_term(
+                term=args.get("term", ""),
+                target_language=args.get("target_language", "es")
+            )
         else:
-            tool_response_data = "Mock: Action completed."
+            tool_response_data = {"error": f"Unknown tool called: {tool_name}"}
             
         # Send tool result back to Gemini to formulate final response
         final_response = chat.send_message(
             Part.from_function_response(
                 name=tool_name,
-                response={"result": tool_response_data}
+                response=tool_response_data
             )
         )
         return final_response.text
     
-    # If no tool was called, return the text directly
     return response.text
