@@ -13,15 +13,17 @@ app = FastAPI(title="The Civic Navigator - Backend", version="1.0.0")
 # Allow requests from the frontend (in production, strictly configure this)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Change to frontend URL in prod
+    allow_origins=["*"],  # Change to frontend URL in prod
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+
 
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat_endpoint(request: ChatRequest, http_request: Request):
@@ -30,25 +32,19 @@ async def chat_endpoint(request: ChatRequest, http_request: Request):
     """
     # Extract headers passed securely from Next.js BFF
     auth_header = http_request.headers.get("Authorization")
-    user_email = http_request.headers.get("X-User-Email")
-    
-    # In a real implementation, we would validate the token if needed
-    # logger.info(f"Received request from user: {user_email}")
-    
+
+    # Security: Do not extract or log PII like user email here.
+
     if not request.messages:
         raise HTTPException(status_code=400, detail="Messages payload cannot be empty")
-        
+
     try:
         # Call the AI Engine service, passing the OAuth access token if available
         ai_response_text = await process_chat(
-            messages=request.messages,
-            access_token=auth_header
+            messages=request.messages, access_token=auth_header
         )
-        
-        return ChatResponse(
-            role="assistant",
-            content=ai_response_text
-        )
+
+        return ChatResponse(role="assistant", content=ai_response_text)
     except Exception as e:
         logger.error(f"Error processing chat: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal Server Error")

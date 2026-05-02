@@ -27,7 +27,7 @@ export async function POST(
     // without ever sending the token back to the React client
     const backendReqHeaders = new Headers({
       'Content-Type': 'application/json',
-      // @ts-ignore
+      // @ts-expect-error: Session token typings vary
       'Authorization': `Bearer ${session.accessToken || ''}`,
       'X-User-Email': session.user?.email || '' // Identity info
     });
@@ -41,7 +41,7 @@ export async function POST(
     const data = await response.json();
     return NextResponse.json(data, { status: response.status });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("BFF Proxy Error:", error);
     return NextResponse.json(
       { error: "Internal Server Error or Backend Unreachable" },
