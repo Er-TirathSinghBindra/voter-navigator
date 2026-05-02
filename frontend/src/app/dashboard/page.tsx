@@ -10,13 +10,59 @@ export default function Dashboard() {
   ]);
   const [inputVal, setInputVal] = useState("");
 
-  const handleSend = (e: React.FormEvent) => {
+  const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputVal.trim()) return;
     
-    setMessages(prev => [...prev, { role: 'user', content: inputVal }]);
+    const userMessage = { role: 'user' as const, content: inputVal };
+    setMessages(prev => [...prev, userMessage]);
     setInputVal("");
-    // TODO: Send to BFF proxy route once backend is ready
+
+    // Add a placeholder assistant response
+    const assistantPlaceholder = { role: 'assistant' as const, content: "..." };
+    setMessages(prev => [...prev, assistantPlaceholder]);
+
+    try {
+      const response = await fetch("/api/proxy/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          messages: [...messages, userMessage] 
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.error) {
+        setMessages(prev => {
+          const updated = [...prev];
+          updated[updated.length - 1] = { 
+            role: 'assistant', 
+            content: `Error: ${data.error}` 
+          };
+          return updated;
+        });
+      } else {
+        setMessages(prev => {
+          const updated = [...prev];
+          updated[updated.length - 1] = { 
+            role: 'assistant', 
+            content: data.content 
+          };
+          return updated;
+        });
+      }
+    } catch (err) {
+      console.error("Chat error:", err);
+      setMessages(prev => {
+        const updated = [...prev];
+        updated[updated.length - 1] = { 
+          role: 'assistant', 
+          content: "Sorry, I encountered an error connecting to the service. Please try again." 
+        };
+        return updated;
+      });
+    }
   };
 
   if (status === "loading") {

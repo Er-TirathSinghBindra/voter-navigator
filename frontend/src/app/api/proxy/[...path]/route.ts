@@ -7,7 +7,7 @@ const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { path: string[] } }
+  { params }: { params: Promise<{ path: string[] }> }
 ) {
   // Check auth
   const session = await getServerSession(authOptions);
@@ -17,7 +17,8 @@ export async function POST(
   }
 
   try {
-    const pathName = params.path.join("/");
+    const { path } = await params;
+    const pathName = path.join("/");
     const body = await req.json();
 
     // Include the backend URL and the specific path requested
