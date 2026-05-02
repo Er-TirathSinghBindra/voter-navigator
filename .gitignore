@@ -45,3 +45,6 @@ __pycache__
 venv
 !.env.example
 .env
+
+# Ignore service account keys
+service-account.json
