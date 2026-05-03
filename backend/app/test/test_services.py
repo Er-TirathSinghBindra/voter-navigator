@@ -1,7 +1,7 @@
 import pytest
 from app.services.civic_api import fetch_civic_info
 from app.services.translation_api import translate_civic_term, _cached_translate
-from app.services.wallet_api import generate_voter_pass, create_wallet_class_sync
+from app.services.wallet_api import generate_voter_pass, create_wallet_class_async
 from app.services.calendar_api import add_calendar_event
 from unittest.mock import MagicMock, patch, AsyncMock
 import requests
@@ -101,7 +101,8 @@ async def test_generate_voter_pass_success(monkeypatch):
         assert "signed_token" in result["link"]
         assert result["message"] == "Successfully generated Digital Voter Pass."
 
-def test_create_wallet_class_sync(monkeypatch):
+@pytest.mark.asyncio
+async def test_create_wallet_class_sync(monkeypatch):
     mock_auth = MagicMock()
     mock_creds = MagicMock()
     mock_creds.token = "fake_token"
@@ -113,7 +114,7 @@ def test_create_wallet_class_sync(monkeypatch):
     with patch("requests.post") as mock_post:
         mock_post.return_value.status_code = 200
         mock_post.return_value.text = "OK"
-        create_wallet_class_sync()
+        await create_wallet_class_async()
         mock_post.assert_called_once()
 
 # --- Calendar API Tests ---
@@ -165,7 +166,8 @@ async def test_add_calendar_event_error(mock_calendar_service):
 
 @pytest.mark.asyncio
 async def test_fetch_civic_info_missing_key(monkeypatch):
-    monkeypatch.setenv("CIVIC_INFO_API_KEY", "PLACEHOLDER_KEY")
+    from app.services.civic_api import settings
+    monkeypatch.setattr(settings, "civic_info_api_key", "PLACEHOLDER_KEY")
     result = await fetch_civic_info("polling_location", "addr")
     assert "API Key is missing" in result["error"]
 
@@ -183,8 +185,8 @@ async def test_wallet_jwt_signing_error(monkeypatch):
         assert "Failed to generate Wallet Pass" in result["error"]
 
 def test_get_service_account_credentials_not_found(monkeypatch):
-    from app.services.wallet_api import _get_service_account_credentials
-    monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", "non_existent.json")
+    from app.services.wallet_api import _get_service_account_credentials, settings
+    monkeypatch.setattr(settings, "google_application_credentials", "non_existent.json")
     assert _get_service_account_credentials() is None
 
 @pytest.mark.asyncio
@@ -211,19 +213,20 @@ async def test_translate_civic_term_unknown_error(monkeypatch):
     result = await translate_civic_term("ballot", "Spanish")
     assert "error" in result
 
-def test_create_wallet_class_no_creds(monkeypatch):
+@pytest.mark.asyncio
+async def test_create_wallet_class_no_creds(monkeypatch):
     monkeypatch.setattr("app.services.wallet_api._get_service_account_credentials", lambda: None)
     # Should just return/print
-    create_wallet_class_sync()
+    await create_wallet_class_async()
 
 def test_get_service_account_credentials_success(monkeypatch, tmp_path):
-    from app.services.wallet_api import _get_service_account_credentials
+    from app.services.wallet_api import _get_service_account_credentials, settings
     d = tmp_path / "creds"
     d.mkdir()
     f = d / "service-account.json"
     f.write_text('{"client_email": "test@test.com"}')
     
-    monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", str(f))
+    monkeypatch.setattr(settings, "google_application_credentials", str(f))
     creds = _get_service_account_credentials()
     assert creds["client_email"] == "test@test.com"
 

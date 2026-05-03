@@ -5,11 +5,16 @@ import { authOptions } from "@/lib/auth";
 // Environment variable for the Python Backend URL
 const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
 
+/**
+ * Backend-for-Frontend (BFF) Proxy Route.
+ * Securely forwards requests from the React client to the Python backend.
+ * Automatically attaches the Google OAuth access token and identity headers.
+ */
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ path: string[] }> }
 ) {
-  // Check auth
+  // 1. Authenticate the user session via NextAuth
   const session = await getServerSession(authOptions);
   
   if (!session) {
@@ -21,31 +26,39 @@ export async function POST(
     const pathName = path.join("/");
     const body = await req.json();
 
-    // Include the backend URL and the specific path requested
+    // 2. Construct the target URL for the microservice
     const targetUrl = `${BACKEND_URL}/api/${pathName}`;
 
-    // Here we can securely attach the Google OAuth access token and user info
-    // without ever sending the token back to the React client
+    // 3. Prepare secure headers
+    // We attach the access token here, keeping it hidden from the browser client.
     const backendReqHeaders = new Headers({
       'Content-Type': 'application/json',
-      // @ts-expect-error: Session token typings vary
       'Authorization': `Bearer ${session.accessToken || ''}`,
-      'X-User-Email': session.user?.email || '' // Identity info
+      'X-User-Email': session.user?.email || ''
     });
 
+    // 4. Forward the request
     const response = await fetch(targetUrl, {
       method: "POST",
       headers: backendReqHeaders,
       body: JSON.stringify(body)
     });
 
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      return NextResponse.json(
+        { error: errorData.detail || "Backend Service Error" }, 
+        { status: response.status }
+      );
+    }
+
     const data = await response.json();
-    return NextResponse.json(data, { status: response.status });
+    return NextResponse.json(data, { status: 200 });
 
   } catch (error: unknown) {
-    console.error("BFF Proxy Error:", error);
+    console.error("BFF Proxy Exception:", error);
     return NextResponse.json(
-      { error: "Internal Server Error or Backend Unreachable" },
+      { error: "Internal Server Error: Backend unreachable or malformed request." },
       { status: 500 }
     );
   }

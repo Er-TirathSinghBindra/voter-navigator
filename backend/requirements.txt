@@ -13,3 +13,4 @@ pytest
 pytest-asyncio
 pytest-cov
 httpx
+pydantic-settings>=2.1.0

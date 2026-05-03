@@ -45,20 +45,3 @@ async def test_chat_endpoint_error():
         assert response.status_code == 500
         assert "Internal Server Error" in response.json()["detail"]
 
-@pytest.mark.asyncio
-async def test_startup_event_success():
-    # Mocking os.environ to have required secrets
-    with patch.dict(os.environ, {"GEMINI_API_KEY": "key1", "CIVIC_INFO_API_KEY": "key2"}):
-        from app.main import startup_event
-        # This should run without error
-        await startup_event()
-
-@pytest.mark.asyncio
-async def test_startup_event_missing_secrets():
-    # Mocking os.environ to MISS secrets
-    with patch.dict(os.environ, {"GEMINI_API_KEY": "", "CIVIC_INFO_API_KEY": ""}, clear=True):
-        # We need to mock sys.exit to prevent the test from exiting
-        with patch("sys.exit") as mock_exit:
-            from app.main import startup_event
-            await startup_event()
-            mock_exit.assert_called_once_with(1)

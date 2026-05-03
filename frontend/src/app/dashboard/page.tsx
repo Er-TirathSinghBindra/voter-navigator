@@ -1,26 +1,37 @@
 "use client";
 
-import { useSession, signIn, signOut } from "next-auth/react";
+import { useSession, signIn } from "next-auth/react";
 import { useState } from "react";
+import { ChatMessage, ChatResponse, ChatErrorResponse } from "@/types/chat";
+import DashboardHeader from "@/components/dashboard/DashboardHeader";
+import ChatHistory from "@/components/dashboard/ChatHistory";
+import ChatInput from "@/components/dashboard/ChatInput";
 
+/**
+ * Main Dashboard Page component.
+ * Handles the high-level state management for the chat interface,
+ * session validation, and API communication with the BFF proxy.
+ */
 export default function Dashboard() {
   const { data: session, status } = useSession();
-  const [messages, setMessages] = useState<{role: 'user'|'assistant', content: string}[]>([
+  const [messages, setMessages] = useState<ChatMessage[]>([
     { role: 'assistant', content: "Hello! I'm The Civic Navigator. How can I help you prepare for the upcoming election?" }
   ]);
-  const [inputVal, setInputVal] = useState("");
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  const handleSend = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inputVal.trim()) return;
+  /**
+   * Sends a message to the backend and updates the chat history.
+   * 
+   * @param {string} content - The user's message content.
+   */
+  const handleSendMessage = async (content: string) => {
+    if (!content.trim()) return;
     
-    const userMessage = { role: 'user' as const, content: inputVal };
-    setMessages(prev => [...prev, userMessage]);
-    setInputVal("");
-
-    // Add a placeholder assistant response
-    const assistantPlaceholder = { role: 'assistant' as const, content: "..." };
-    setMessages(prev => [...prev, assistantPlaceholder]);
+    const userMessage: ChatMessage = { role: 'user', content };
+    const assistantPlaceholder: ChatMessage = { role: 'assistant', content: "..." };
+    
+    setMessages(prev => [...prev, userMessage, assistantPlaceholder]);
+    setIsProcessing(true);
 
     try {
       const response = await fetch("/api/proxy/chat", {
@@ -31,27 +42,19 @@ export default function Dashboard() {
         })
       });
 
-      const data = await response.json();
+      const data: ChatResponse | ChatErrorResponse = await response.json();
 
-      if (data.error) {
-        setMessages(prev => {
-          const updated = [...prev];
-          updated[updated.length - 1] = { 
-            role: 'assistant', 
-            content: `Error: ${data.error}` 
-          };
-          return updated;
-        });
-      } else {
-        setMessages(prev => {
-          const updated = [...prev];
-          updated[updated.length - 1] = { 
-            role: 'assistant', 
-            content: data.content 
-          };
-          return updated;
-        });
-      }
+      setMessages(prev => {
+        const updated = [...prev];
+        const lastIndex = updated.length - 1;
+        
+        if ('error' in data) {
+          updated[lastIndex] = { role: 'assistant', content: `Error: ${data.error}` };
+        } else {
+          updated[lastIndex] = { role: 'assistant', content: (data as ChatResponse).content };
+        }
+        return updated;
+      });
     } catch (err) {
       console.error("Chat error:", err);
       setMessages(prev => {
@@ -62,9 +65,12 @@ export default function Dashboard() {
         };
         return updated;
       });
+    } finally {
+      setIsProcessing(false);
     }
   };
 
+  // Loading state
   if (status === "loading") {
     return (
       <div className="layout-container center-content">
@@ -73,6 +79,7 @@ export default function Dashboard() {
     );
   }
 
+  // Authentication Required state
   if (!session) {
     return (
       <div className="layout-container center-content">
@@ -93,67 +100,11 @@ export default function Dashboard() {
 
   return (
     <div className="dashboard-layout">
-      <header className="dashboard-header" role="banner">
-        <h2>The Civic Navigator</h2>
-        <div className="user-controls">
-          <span className="user-email-badge" aria-label={`Signed in as ${session.user?.email}`}>
-            {session.user?.email}
-          </span>
-          <button 
-            className="secondary-button" 
-            onClick={() => signOut({ callbackUrl: '/' })}
-            aria-label="Sign out from your account"
-          >
-            Sign out
-          </button>
-        </div>
-      </header>
+      <DashboardHeader session={session} />
 
       <main className="chat-container-main" role="main" aria-label="Conversational UI">
-        <section 
-          className="chat-history" 
-          aria-live="polite" 
-          aria-atomic="false" 
-          aria-label="Chat messages history"
-        >
-          {messages.map((m, idx) => (
-            <article 
-              key={idx} 
-              className={`chat-bubble ${m.role === 'user' ? 'bubble-user' : 'bubble-assistant'}`}
-              aria-label={`Message from ${m.role}`}
-            >
-              <p>{m.content}</p>
-            </article>
-          ))}
-        </section>
-
-        <form 
-          className="chat-input-form" 
-          onSubmit={handleSend} 
-          aria-label="Message submission form"
-        >
-          <label htmlFor="chat-input" className="visually-hidden">
-            Type your message here
-          </label>
-          <input
-            id="chat-input"
-            type="text"
-            className="chat-input-field"
-            value={inputVal}
-            onChange={(e) => setInputVal(e.target.value)}
-            placeholder="Ask about polling locations, deadlines, or civic terms..."
-            aria-required="true"
-            autoComplete="off"
-          />
-          <button 
-            type="submit" 
-            className="send-button"
-            aria-label="Send message"
-            disabled={!inputVal.trim()}
-          >
-            Send
-          </button>
-        </form>
+        <ChatHistory messages={messages} />
+        <ChatInput onSendMessage={handleSendMessage} disabled={isProcessing} />
       </main>
     </div>
   );
