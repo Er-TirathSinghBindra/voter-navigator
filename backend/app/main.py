@@ -3,6 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from .models import ChatRequest, ChatResponse
 from .services.ai_engine import process_chat
 import logging
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Setup basic logging
 logging.basicConfig(level=logging.INFO)
@@ -26,9 +30,10 @@ async def startup_event():
     logger.info("Startup validation passed. All required secrets are present.")
 
 # Allow requests from the frontend (in production, strictly configure this)
+FRONTEND_URL = os.getenv("FRONTEND_URL", "*")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Change to frontend URL in prod
+    allow_origins=[FRONTEND_URL],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

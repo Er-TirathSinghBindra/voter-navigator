@@ -59,7 +59,7 @@ graph TD
 ## 🏗 Architecture & Technical Stack
 - **Frontend**: Next.js (App Router), React, TailwindCSS, NextAuth.js
 - **Backend**: Python 3.11, FastAPI, Uvicorn, Pydantic
-- **AI**: Google Gemini 3.1 (`google-genai` SDK)
+- **AI**: Google Gemini 3.1 (`google-adk` SDK)
 - **Deployment**: Google Cloud Run, GCP Secret Manager
 
 ## 🛠️ Local Development Setup
@@ -115,6 +115,8 @@ Before deploying, you must create these secrets in your Google Cloud environment
 # 1. Backend Secrets
 echo -n "<YOUR_GEMINI_API_KEY>" | gcloud secrets create gemini-api-key --data-file=-
 echo -n "<YOUR_CIVIC_INFO_API_KEY>" | gcloud secrets create civic-info-api-key --data-file=-
+echo -n "<YOUR_WALLET_ISSUER_ID>" | gcloud secrets create wallet-issuer-id --data-file=-
+echo -n "<YOUR_WALLET_CLASS_ID>" | gcloud secrets create wallet-class-id --data-file=-
 
 # 2. Frontend Secrets
 echo -n "<YOUR_NEXTAUTH_SECRET>" | gcloud secrets create nextauth-secret --data-file=-
@@ -135,5 +137,3 @@ The script will automatically:
 2. Grant it permission to read from Secret Manager.
 3. Deploy the backend and frontend to Cloud Run, securely injecting the secrets at boot via the `--set-secrets` flag.
 
----
-**Prepared for Project Submission.**

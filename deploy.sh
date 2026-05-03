@@ -10,7 +10,7 @@
 # Variables
 PROJECT_ID=$(gcloud config get-value project)
 REGION="us-central1"
-SERVICE_ACCOUNT_NAME="civic-navigator-sa"
+SERVICE_ACCOUNT_NAME="civic-navigator-backend"
 SERVICE_ACCOUNT_EMAIL="${SERVICE_ACCOUNT_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 
 # Ensure the user is logged in and project is set
@@ -48,7 +48,7 @@ gcloud run deploy civic-navigator-backend \
     --region "$REGION" \
     --service-account "$SERVICE_ACCOUNT_EMAIL" \
     --allow-unauthenticated \
-    --set-secrets="GEMINI_API_KEY=gemini-api-key:latest,CIVIC_INFO_API_KEY=civic-info-api-key:latest"
+    --set-secrets="GEMINI_API_KEY=gemini-api-key:latest,CIVIC_INFO_API_KEY=civic-info-api-key:latest,WALLET_ISSUER_ID=wallet-issuer-id:latest,WALLET_CLASS_ID=wallet-class-id:latest"
 
 # Get backend URL
 BACKEND_URL=$(gcloud run services describe civic-navigator-backend --region "$REGION" --format 'value(status.url)')
@@ -68,5 +68,13 @@ gcloud run deploy civic-navigator-frontend \
 
 FRONTEND_URL=$(gcloud run services describe civic-navigator-frontend --region "$REGION" --format 'value(status.url)')
 echo "✅ Frontend Deployed: $FRONTEND_URL"
+
+# ------------------------------------------------------------------------------
+# 4. Post-Deployment Sync (Connect Backend to Frontend for CORS)
+# ------------------------------------------------------------------------------
+echo "🔐 Securing Backend CORS with Frontend URL..."
+gcloud run services update civic-navigator-backend \
+    --region "$REGION" \
+    --set-env-vars="FRONTEND_URL=$FRONTEND_URL"
 
 echo "🎉 Deployment Complete!"
