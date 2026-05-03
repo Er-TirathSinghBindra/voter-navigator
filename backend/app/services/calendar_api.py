@@ -17,7 +17,7 @@ async def add_calendar_event(
         event_title: The title of the event (e.g., 'Voter Registration Deadline').
         date_iso: The date of the event in ISO format (YYYY-MM-DD).
     """
-    if not access_token or access_token.startswith("Bearer "):
+    if access_token and access_token.startswith("Bearer "):
         # Strip "Bearer " if it's passed with the prefix
         access_token = access_token.replace("Bearer ", "").strip()
 

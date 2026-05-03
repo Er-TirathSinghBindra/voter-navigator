@@ -82,4 +82,3 @@ async def fetch_civic_info(query_type: str, address_context: str) -> dict:
                 continue
             return {"error": "Network error reaching Google APIs."}
 
-    return {"error": "Max retries exceeded while calling Civic Information API."}

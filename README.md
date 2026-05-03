@@ -136,4 +136,26 @@ The script will automatically:
 1. Create a secure Service Account (`civic-navigator-sa`).
 2. Grant it permission to read from Secret Manager.
 3. Deploy the backend and frontend to Cloud Run, securely injecting the secrets at boot via the `--set-secrets` flag.
+4. Perform a **Post-Deployment Sync** to lock down the Backend CORS to the final Frontend URL.
+
+---
+
+## 🧪 Testing
+
+The project includes a comprehensive testing suite for both the backend and frontend.
+
+### 1. Backend (Pytest)
+We use `pytest` with `pytest-cov` to ensure all API services and agents are logically sound.
+```bash
+cd backend
+conda activate promptWars2-py311
+python -m pytest --cov=app app/test/
+```
+
+### 2. Frontend (Vitest)
+We use `Vitest` and `React Testing Library` for high-performance component and API route testing.
+```bash
+cd frontend
+npm run test:coverage
+```
 
