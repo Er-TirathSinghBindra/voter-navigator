@@ -11,8 +11,11 @@ CIVIC_API_BASE_URL = "https://www.googleapis.com/civicinfo/v2"
 
 async def fetch_civic_info(query_type: str, address_context: str) -> dict:
     """
-    Fetches polling locations or representatives using Google Civic Information API.
-    query_type can be 'polling_location', 'representatives'.
+    Fetches polling locations, ballot info, or representative data using the Google Civic Information API.
+    
+    Args:
+        query_type: The type of information to fetch. Must be one of: 'polling_location', 'ballot', or 'representatives'.
+        address_context: The user's street address, city, and state/zip code to search within.
     """
     api_key = os.getenv("CIVIC_INFO_API_KEY", "PLACEHOLDER_KEY")
     if api_key == "PLACEHOLDER_KEY":

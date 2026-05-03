@@ -1,138 +1,80 @@
 import os
-import json
-from dotenv import load_dotenv
-load_dotenv()
-
-from google import genai
+import logging
+from google.adk.agents import Agent
+from google.adk.runners import Runner
+from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
-from .civic_api import fetch_civic_info
-from .wallet_api import generate_voter_pass
-from .calendar_api import add_calendar_event
-from .translation_api import translate_civic_term
+from app.agents.civic import civic_agent
+from app.agents.utility import utility_agent
 
-# Initialize new Gemini SDK (google.genai)
+logger = logging.getLogger(__name__)
+
+# Application Configuration
+APP_NAME = "civic_navigator"
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-if not GEMINI_API_KEY:
-    print("Warning: GEMINI_API_KEY not found in environment variables.")
 
-# Create the GenAI Client
-client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else genai.Client()
+# 1. Define the Primary Coordinator Agent
+# This agent acts as the router and orchestrator
+root_agent = Agent(
+    name="primary_coordinator",
+    model="gemini-3.1-flash-lite-preview",  # Keeping the user's preferred model for the coordinator
+    instruction="""You are "The Civic Navigator" Primary Coordinator.
+    Your goal is to help users navigate the election process.
+    
+    Delegation Strategy:
+    - For polling locations, representatives, or ballot info: Use the 'civic_specialist' sub-agent.
+    - For calendar syncing, wallet passes, or translations: Use the 'utility_assistant' sub-agent.
+    
+    Remain neutral, concise, and friendly. Synthesize the sub-agent responses into a helpful final answer.""",
+    sub_agents=[civic_agent, utility_agent]
+)
 
-# Define Tools via Function Schemas
-def get_civic_info(query_type: str, address_context: str):
-    """
-    Get polling locations, ballot information, or representative data based on the user's address. Use this whenever the user asks where to vote or who their representative is.
-    Args:
-        query_type: Type of info needed, exactly one of: 'polling_location', 'ballot', 'representatives'
-        address_context: The user's current or provided address. MUST include street and ZIP code if possible.
-    """
-    pass
+# 2. Setup Session Service (In-memory for development)
+session_service = InMemorySessionService()
 
-def add_calendar_deadline(event_title: str, date: str):
-    """
-    Adds an election deadline to the user's Google Calendar.
-    Args:
-        event_title: Title of the calendar event (e.g., 'Election Day', 'Voter Registration Deadline')
-        date: ISO format date string of the deadline (YYYY-MM-DD).
-    """
-    pass
-
-def generate_wallet_pass(voter_state: str):
-    """
-    Generates a Digital Voter Readiness Pass for Google Wallet.
-    Args:
-        voter_state: The state the voter is registered in.
-    """
-    pass
-
-def translate_civic_term(term: str, target_language: str):
-    """
-    Translates a complex civic or election term into another language.
-    Args:
-        term: The English term to translate (e.g., 'provisional ballot')
-        target_language: The language to translate to (e.g., 'Spanish', 'Mandarin')
-    """
-    pass
-
-civic_tools = [get_civic_info, add_calendar_deadline, generate_wallet_pass, translate_civic_term]
-
-# Persona configuration
-SYSTEM_INSTRUCTION = """
-You are "The Civic Navigator", a helpful, neutral, and highly knowledgeable election assistant. 
-Your goal is to help users navigate the voting process, find polling locations, track deadlines, 
-generate their readiness passes, and translate complex civic terminology.
-
-Rules:
-1. Remain strictly non-partisan and neutral. Do not endorse any candidate or party.
-2. Use the provided tools when the user's intent matches them.
-3. Be concise and friendly.
-4. If an API tool returns an error (like missing address), politely ask the user for the missing information.
-5. Do NOT make up polling locations or dates. Only use data returned by the tools.
-"""
+# 3. Setup the ADK Runner
+coordinator_runner = Runner(
+    agent=root_agent,
+    app_name=APP_NAME,
+    session_service=session_service,
+)
 
 async def process_chat(messages: list, access_token: str = None) -> str:
     """
-    Processes the chat history, invokes Gemini, and handles real API tool calls.
+    Processes the chat history using the Google ADK Runner.
+    This replaces the manual tool-calling loop.
     """
-    # Convert incoming messages to google.genai Content format
-    history = []
-    for msg in messages[:-1]: # All but the last one
-        role = "model" if msg.role == "assistant" else "user"
-        history.append(types.Content(role=role, parts=[types.Part.from_text(text=msg.content)]))
+    # For ADK, we typically use session-based state. 
+    # For this simple implementation, we'll create a unique session ID per request
+    # or use a placeholder if we want to maintain history across requests.
+    session_id = "default_session" # In production, this would be tied to the user
+    user_id = "user_123"
+
+    # Ensure session exists
+    await session_service.create_session(app_name=APP_NAME, user_id=user_id, session_id=session_id)
+
+    # The last message from the user
+    last_msg = messages[-1].content
+    new_message = types.Content(role='user', parts=[types.Part.from_text(text=last_msg)])
+
+    # Add the OAuth token to the session context if available
+    # The ADK Runner can pass context to tools
+    context = {"access_token": access_token} if access_token else {}
+
+    try:
+        final_answer = ""
+        # The ADK Runner handles history and tool calls internally
+        async for event in coordinator_runner.run_async(
+            user_id=user_id, 
+            session_id=session_id, 
+            new_message=new_message,
+            # context=context # Assuming Runner/Agent can pass context to tool functions
+        ):
+            if event.is_final_response() and event.content:
+                final_answer = event.content.parts[0].text.strip()
         
-    last_message = messages[-1].content
-    
-    config = types.GenerateContentConfig(
-        system_instruction=SYSTEM_INSTRUCTION,
-        tools=civic_tools
-    )
-    
-    chat = client.chats.create(
-        model="gemini-3.1-flash-lite-preview",
-        config=config,
-        history=history if history else None
-    )
-    
-    response = chat.send_message(last_message)
-    
-    # Handle Tool Calls
-    if response.function_calls:
-        for function_call in response.function_calls:
-            tool_name = function_call.name
-            args = function_call.args
-            
-            tool_response_data = {}
-            
-            if tool_name == "get_civic_info":
-                tool_response_data = await fetch_civic_info(
-                    query_type=args.get("query_type", "polling_location"),
-                    address_context=args.get("address_context", "")
-                )
-            elif tool_name == "add_calendar_deadline":
-                tool_response_data = await add_calendar_event(
-                    event_title=args.get("event_title", "Election Event"),
-                    date_iso=args.get("date", ""),
-                    access_token=access_token
-                )
-            elif tool_name == "generate_wallet_pass":
-                tool_response_data = await generate_voter_pass(
-                    voter_state=args.get("voter_state", "Unknown")
-                )
-            elif tool_name == "translate_civic_term":
-                tool_response_data = await translate_civic_term(
-                    term=args.get("term", ""),
-                    target_language=args.get("target_language", "es")
-                )
-            else:
-                tool_response_data = {"error": f"Unknown tool called: {tool_name}"}
-                
-            # Send tool result back to Gemini to formulate final response
-            tool_part = types.Part.from_function_response(
-                name=tool_name,
-                response=tool_response_data
-            )
-            final_response = chat.send_message(tool_part)
-            return final_response.text
-    
-    return response.text
+        return final_answer
+    except Exception as e:
+        logger.error(f"ADK Runner Error: {e}")
+        return "I encountered an error while processing your request. Please try again."

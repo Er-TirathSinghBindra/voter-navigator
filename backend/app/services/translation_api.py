@@ -64,7 +64,11 @@ def _cached_translate(term: str, target_language: str) -> str:
 
 async def translate_civic_term(term: str, target_language: str) -> dict:
     """
-    Translates a complex civic term to the target language.
+    Translates a complex civic or election term into a target language.
+    
+    Args:
+        term: The English civic term to translate (e.g., 'provisional ballot').
+        target_language: The language to translate into (e.g., 'Spanish', 'Hindi').
     """
     # Use LRU cache to prevent rate limits for identical frequent queries like "provisional ballot"
     translated_text = _cached_translate(term, target_language)

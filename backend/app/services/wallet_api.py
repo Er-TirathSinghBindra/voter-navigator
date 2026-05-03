@@ -22,8 +22,10 @@ def _get_service_account_credentials():
 
 async def generate_voter_pass(voter_state: str) -> dict:
     """
-    Generates a Google Wallet Add-to-Wallet URL for a Voter Readiness Pass.
-    If credentials are not found, returns a placeholder mock URL.
+    Generates a Google Wallet 'Add-to-Wallet' URL for a Voter Readiness Pass.
+    
+    Args:
+        voter_state: The state or region name to display on the digital pass (e.g., 'Delhi', 'California').
     """
     issuer_id = os.getenv("WALLET_ISSUER_ID", "PLACEHOLDER_ISSUER")
     class_id = os.getenv("WALLET_CLASS_ID", f"{issuer_id}.voter_readiness_pass")

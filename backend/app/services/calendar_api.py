@@ -8,11 +8,14 @@ logger = logging.getLogger(__name__)
 
 
 async def add_calendar_event(
-    event_title: str, date_iso: str, access_token: str
+    event_title: str, date_iso: str, access_token: str = None
 ) -> dict:
     """
-    Adds a deadline event to the user's primary Google Calendar.
-    Requires the access_token passed from Next.js BFF.
+    Adds a deadline or election event to the user's primary Google Calendar.
+    
+    Args:
+        event_title: The title of the event (e.g., 'Voter Registration Deadline').
+        date_iso: The date of the event in ISO format (YYYY-MM-DD).
     """
     if not access_token or access_token.startswith("Bearer "):
         # Strip "Bearer " if it's passed with the prefix
